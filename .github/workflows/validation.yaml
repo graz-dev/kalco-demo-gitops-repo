@@ -67,36 +67,52 @@ jobs:
 
           TOTAL_DIFF=""
           HAS_DRIFT="false"
+          
+          echo "Found changed files: $CHANGED_FILES"
 
           for file in $CHANGED_FILES; do
+            echo "---------------------------------------------------"
             echo "Checking $file..."
             # diff command: --target <local-file> --snapshot-dir <temp-snapshot-dir>
             OUTPUT=$(kalco diff --target "$file" --snapshot-dir tmp-snapshot || true)
             
             if [ -n "$OUTPUT" ]; then
+               echo "Diff Output for $file:"
+               echo "$OUTPUT"
                TOTAL_DIFF+=$'\n'"File: $file"$'\n'"$OUTPUT"$'\n'
                if echo "$OUTPUT" | grep -q "DRIFT DETECTED"; then
                  HAS_DRIFT="true"
+                 echo "!!! CRITICAL: DRIFT DETECTED IN $file !!!"
                fi
+            else
+               echo "No drift found for $file."
             fi
+            echo "---------------------------------------------------"
           done
           
           echo "has_drift=$HAS_DRIFT" >> $GITHUB_OUTPUT
           
-          # Multiline output for comment
-          echo "diff_output<<EOF" >> $GITHUB_OUTPUT
+          # Multiline output for comment using environment file
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "diff_output<<$EOF" >> $GITHUB_OUTPUT
           echo "$TOTAL_DIFF" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
 
       - name: Comment PR & Label
         uses: actions/github-script@v6
+        env:
+          DIFF_OUTPUT: ${{ steps.kalco-diff.outputs.diff_output }}
+          HAS_DRIFT: ${{ steps.kalco-diff.outputs.has_drift }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const output = \`${{ steps.kalco-diff.outputs.diff_output }}\`;
-            const hasDrift = ${{ steps.kalco-diff.outputs.has_drift }};
+            const output = process.env.DIFF_OUTPUT;
+            const hasDrift = process.env.HAS_DRIFT === 'true';
             
-            if (output.trim() === "") return;
+            if (!output || output.trim() === "") {
+                console.log("No output to comment.");
+                return;
+            }
 
             const labelAdd = hasDrift ? 'kalco/deny' : 'kalco/approve';
             const labelRemove = hasDrift ? 'kalco/approve' : 'kalco/deny';
@@ -105,7 +121,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: \`### 🛡️ Kalco Validation Report\n\n\`\`\`\n\${output}\n\`\`\`\`
+              body: `### 🛡️ Kalco Validation Report\n\n\`\`\`\n${output}\n\`\`\``
             });
             
             try {
