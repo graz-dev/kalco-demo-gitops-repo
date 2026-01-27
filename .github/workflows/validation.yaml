@@ -21,7 +21,7 @@ jobs:
       - name: Install Tools
         run: |
           # Install Kalco
-          curl -sL https://github.com/graz-dev/kalco/releases/latest/download/kalco_Linux_x86_64.tar.gz | tar xz
+          curl -sL https://github.com/graz-dev/kalco/releases/download/latest/kalco_Linux_x86_64.tar.gz | tar xz
           sudo mv kalco /usr/local/bin/
 
       - name: Configure Kalco Context
@@ -94,7 +94,7 @@ jobs:
             fi
             
             # Use Kalco Diff directly with namespace override, no-color, and ignore-base
-            OUTPUT=$(kalco --no-color diff --target "$file" --snapshot-dir tmp-snapshot --format markdown --namespace guestbook $IGNORE_BASE_FLAG || true)
+            OUTPUT=$(kalco --no-color diff --target "$file" --snapshot-dir tmp-snapshot --format markdown --namespace guestbook $IGNORE_BASE_FLAG --ignore-extra-fields || true)
             
             if [ -n "$OUTPUT" ]; then
                echo "Diff Output for $file:"
