@@ -16,7 +16,7 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Needed for git diffs
+          fetch-depth: 0 # Needed for git diff
 
       - name: Install Tools
         run: |
@@ -55,7 +55,12 @@ jobs:
         id: kalco-diff
         run: |
           echo "Detecting changed files..."
-          CHANGED_FILES=$(git diff --name-only origin/master -- manifests/ | grep '\.yaml$')
+          # Fetch the base branch to ensure diff works
+          git fetch origin ${{ github.base_ref }}
+          
+          # Diff against the PR base branch
+          # Using origin/base ref to find files changed in this PR
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} -- manifests/ | grep '\.yaml$')
           
           if [ -z "$CHANGED_FILES" ]; then
             echo "No manifest changes detected."
@@ -70,11 +75,26 @@ jobs:
           echo "Found changed files: $CHANGED_FILES"
 
           for file in $CHANGED_FILES; do
+            # Skip if file was deleted
+            if [ ! -f "$file" ]; then
+                echo "Skipping deleted file: $file"
+                continue
+            fi
+            
             echo "---------------------------------------------------"
             echo "Checking $file..."
             
-            # Use Kalco Diff directly with namespace override and no-color
-            OUTPUT=$(kalco --no-color diff --target "$file" --snapshot-dir tmp-snapshot --format markdown --namespace guestbook || true)
+            # Fetch the base version of this file for smart matching
+            # We catch error in case it's a new file (not in base)
+            git show origin/${{ github.base_ref }}:$file > base_version.yaml || touch base_version.yaml
+            
+            IGNORE_BASE_FLAG=""
+            if [ -s base_version.yaml ]; then
+                IGNORE_BASE_FLAG="--ignore-base base_version.yaml"
+            fi
+            
+            # Use Kalco Diff directly with namespace override, no-color, and ignore-base
+            OUTPUT=$(kalco --no-color diff --target "$file" --snapshot-dir tmp-snapshot --format markdown --namespace guestbook $IGNORE_BASE_FLAG || true)
             
             if [ -n "$OUTPUT" ]; then
                echo "Diff Output for $file:"
