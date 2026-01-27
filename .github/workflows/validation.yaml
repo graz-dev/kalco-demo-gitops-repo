@@ -18,8 +18,9 @@ jobs:
         with:
           fetch-depth: 0 # Needed for git diff
 
-      - name: Install Kalco
+      - name: Install Tools
         run: |
+          # Install Kalco
           curl -sL https://github.com/graz-dev/kalco/releases/latest/download/kalco_Linux_x86_64.tar.gz | tar xz
           sudo mv kalco /usr/local/bin/
 
@@ -48,14 +49,12 @@ jobs:
       - name: Snapshot Live State
         run: |
           # Export current cluster state to the temp directory
-          # No git push needed as this is a transient snapshot for validation only
           kalco export
 
       - name: Detect Drifts
         id: kalco-diff
         run: |
           echo "Detecting changed files..."
-          # Get list of changed YAML files in manifests/
           CHANGED_FILES=$(git diff --name-only origin/master -- manifests/ | grep '\.yaml$')
           
           if [ -z "$CHANGED_FILES" ]; then
@@ -73,14 +72,17 @@ jobs:
           for file in $CHANGED_FILES; do
             echo "---------------------------------------------------"
             echo "Checking $file..."
-            # diff command: --target <local-file> --snapshot-dir <temp-snapshot-dir>
-            OUTPUT=$(kalco diff --target "$file" --snapshot-dir tmp-snapshot || true)
+            
+            # Use Kalco Diff directly with namespace override and no-color
+            OUTPUT=$(kalco --no-color diff --target "$file" --snapshot-dir tmp-snapshot --format markdown --namespace guestbook || true)
             
             if [ -n "$OUTPUT" ]; then
                echo "Diff Output for $file:"
                echo "$OUTPUT"
-               TOTAL_DIFF+=$'\n'"File: $file"$'\n'"$OUTPUT"$'\n'
-               if echo "$OUTPUT" | grep -q "DRIFT DETECTED"; then
+               
+               TOTAL_DIFF+=$'\n'"#### File: \`$file\`"$'\n'"$OUTPUT"$'\n'
+               
+               if echo "$OUTPUT" | grep -q "Drift Detected"; then
                  HAS_DRIFT="true"
                  echo "!!! CRITICAL: DRIFT DETECTED IN $file !!!"
                fi
@@ -92,7 +94,6 @@ jobs:
           
           echo "has_drift=$HAS_DRIFT" >> $GITHUB_OUTPUT
           
-          # Multiline output for comment using environment file
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "diff_output<<$EOF" >> $GITHUB_OUTPUT
           echo "$TOTAL_DIFF" >> $GITHUB_OUTPUT
@@ -121,7 +122,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `### 🛡️ Kalco Validation Report\n\n\`\`\`\n${output}\n\`\`\``
+              body: `### 🛡️ Kalco Validation Report\n\n${output}`
             });
             
             try {
