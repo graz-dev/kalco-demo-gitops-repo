@@ -11,7 +11,18 @@ This tutorial guides you through setting up a **GitOps Validation Workflow** usi
 
 ## Setup
 
-1.  **Copy Files**: Copy the contents of this folder (`manifests/`, `.github/`, `argocd/`) to the **root** of your repository.
+### 1. Install ArgoCD (if not installed)
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Wait for ArgoCD to be ready
+kubectl wait --for=condition=available deployment -l "app.kubernetes.io/name=argocd-server" -n argocd --timeout=300s
+```
+
+### 2. Copy Files
+Copy the contents of this folder (`manifests/`, `.github/`, `argocd/`) to the **root** of your repository.
     *   Your repo should look like:
         ```
         .github/workflows/validation.yaml
@@ -20,8 +31,12 @@ This tutorial guides you through setting up a **GitOps Validation Workflow** usi
         ...
         argocd/application.yaml
         ```
-2.  **Configure Secret**: Add `KUBECONFIG` to your repo secrets.
-3.  **Deploy App**: Apply `argocd/application.yaml` (edit the repoURL first!).
+
+### 3. Configure Secret
+Add `KUBECONFIG` to your repo secrets.
+
+### 4. Deploy App
+Apply `argocd/application.yaml` (edit the repoURL first!).
 
 ## Workflow Overview
 
