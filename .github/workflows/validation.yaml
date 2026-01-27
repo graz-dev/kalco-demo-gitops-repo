@@ -21,7 +21,7 @@ jobs:
       - name: Install Tools
         run: |
           # Install Kalco
-          curl -sL https://github.com/graz-dev/kalco/releases/latest/download/kalco_Linux_x86_64.tar.gz | tar xz
+          curl -sL https://github.com/graz-dev/kalco/releases/download/v0.1.18/kalco_Linux_x86_64.tar.gz | tar xz
           sudo mv kalco /usr/local/bin/
 
       - name: Configure Kalco Context
@@ -48,89 +48,41 @@ jobs:
 
       - name: Snapshot Live State
         run: |
-          # Export current cluster state to the temp directory
           kalco export
 
-      - name: Detect Drifts
-        id: kalco-diff
+      - name: Kalco Validate
+        id: kalco-validate
         run: |
-          echo "Detecting changed files..."
-          # Fetch the base branch to ensure diff works
+          # Fetch base for comparison
           git fetch origin ${{ github.base_ref }}
           
-          # Diff against the PR base branch
-          # Using origin/base ref to find files changed in this PR
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} -- manifests/ | grep '\.yaml$')
-          
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No manifest changes detected."
-            echo "has_drift=false" >> $GITHUB_OUTPUT
-            echo "diff_output=No manifest changes." >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          TOTAL_DIFF=""
-          HAS_DRIFT="false"
-          
-          echo "Found changed files: $CHANGED_FILES"
-
-          for file in $CHANGED_FILES; do
-            # Skip if file was deleted
-            if [ ! -f "$file" ]; then
-                echo "Skipping deleted file: $file"
-                continue
-            fi
+          # Run validation
+          # Auto-detects changes against origin/base, ignores defaults, and generates report
+          kalco validate \
+            --base origin/${{ github.base_ref }} \
+            --dirs manifests \
+            --snapshot-dir tmp-snapshot \
+            --namespace guestbook \
+            --report-file report.md \
+            || echo "has_drift=true" >> $GITHUB_OUTPUT
             
-            echo "---------------------------------------------------"
-            echo "Checking $file..."
-            
-            # Fetch the base version of this file for smart matching
-            # We catch error in case it's a new file (not in base)
-            git show origin/${{ github.base_ref }}:$file > base_version.yaml || touch base_version.yaml
-            
-            IGNORE_BASE_FLAG=""
-            if [ -s base_version.yaml ]; then
-                IGNORE_BASE_FLAG="--ignore-base base_version.yaml"
-            fi
-            
-            # Use Kalco Diff directly with namespace override, no-color, and ignore-base
-            OUTPUT=$(kalco --no-color diff --target "$file" --snapshot-dir tmp-snapshot --format markdown --namespace guestbook $IGNORE_BASE_FLAG --ignore-extra-fields || true)
-            
-            if [ -n "$OUTPUT" ]; then
-               echo "Diff Output for $file:"
-               echo "$OUTPUT"
-               
-               TOTAL_DIFF+=$'\n'"#### File: \`$file\`"$'\n'"$OUTPUT"$'\n'
-               
-               if echo "$OUTPUT" | grep -q "Drift Detected"; then
-                 HAS_DRIFT="true"
-                 echo "!!! CRITICAL: DRIFT DETECTED IN $file !!!"
-               fi
-            else
-               echo "No drift found for $file."
-            fi
-            echo "---------------------------------------------------"
-          done
-          
-          echo "has_drift=$HAS_DRIFT" >> $GITHUB_OUTPUT
-          
-          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          echo "diff_output<<$EOF" >> $GITHUB_OUTPUT
-          echo "$TOTAL_DIFF" >> $GITHUB_OUTPUT
-          echo "$EOF" >> $GITHUB_OUTPUT
+          # Read report into output
+          echo "diff_output<<EOF" >> $GITHUB_OUTPUT
+          cat report.md >> $GITHUB_OUTPUT || echo "No changes." >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Comment PR & Label
         uses: actions/github-script@v6
         env:
-          DIFF_OUTPUT: ${{ steps.kalco-diff.outputs.diff_output }}
-          HAS_DRIFT: ${{ steps.kalco-diff.outputs.has_drift }}
+          DIFF_OUTPUT: ${{ steps.kalco-validate.outputs.diff_output }}
+          HAS_DRIFT: ${{ steps.kalco-validate.outputs.has_drift }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const output = process.env.DIFF_OUTPUT;
             const hasDrift = process.env.HAS_DRIFT === 'true';
             
-            if (!output || output.trim() === "") {
+            if (!output || output.trim() === "" || output.trim() === "No changes.") {
                 console.log("No output to comment.");
                 return;
             }
