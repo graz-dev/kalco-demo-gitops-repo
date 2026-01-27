@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/graz-dev/kalco-demo-gitops-repo  
     targetRevision: HEAD
-    path: raw-resources/manifests
+    path: manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: guestbook
