@@ -16,7 +16,7 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 
+          fetch-depth: 0 # Needed for git diff
 
       - name: Install Tools
         run: |
@@ -35,8 +35,10 @@ jobs:
           mkdir -p ~/.kube
           echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           
+          # Create a temporary directory for the snapshot
           mkdir -p tmp-snapshot
           
+          # Set context pointing to the temporary snapshot directory
           kalco context set validation-ctx \
             --kubeconfig ~/.kube/config \
             --output $(pwd)/tmp-snapshot \
@@ -51,8 +53,11 @@ jobs:
       - name: Kalco Validate
         id: kalco-validate
         run: |
+          # Fetch base for comparison
           git fetch origin ${{ github.base_ref }}
           
+          # Run validation
+          # Auto-detects changes against origin/base, ignores defaults, and generates report
           kalco validate \
             --base origin/${{ github.base_ref }} \
             --dirs manifests \
@@ -61,6 +66,7 @@ jobs:
             --report-file report.md \
             || echo "has_drift=true" >> $GITHUB_OUTPUT
             
+          # Read report into output
           echo "diff_output<<EOF" >> $GITHUB_OUTPUT
           cat report.md >> $GITHUB_OUTPUT || echo "No changes." >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
