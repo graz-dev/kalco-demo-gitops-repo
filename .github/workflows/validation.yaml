@@ -43,6 +43,8 @@ jobs:
             --output $(pwd)/tmp-snapshot \
             --description "CI Validation Context"
 
+          kalco context use validation-ctx
+
       - name: Snapshot Live State
         run: |
           # Export current cluster state to the temp directory
@@ -54,7 +56,7 @@ jobs:
         run: |
           echo "Detecting changed files..."
           # Get list of changed YAML files in manifests/
-          CHANGED_FILES=$(git diff --name-only origin/main -- manifests/ | grep '\.yaml$')
+          CHANGED_FILES=$(git diff --name-only origin/master -- manifests/ | grep '\.yaml$')
           
           if [ -z "$CHANGED_FILES" ]; then
             echo "No manifest changes detected."
