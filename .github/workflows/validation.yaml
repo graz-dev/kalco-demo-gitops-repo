@@ -27,6 +27,10 @@ jobs:
         env:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
         run: |
+          # Configure Git for Kalco's internal git operations
+          git config --global user.email "ci-bot@kalco.dev"
+          git config --global user.name "Kalco CI Bot"
+
           mkdir -p ~/.kube
           echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           
