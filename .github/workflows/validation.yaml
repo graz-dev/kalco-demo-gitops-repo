@@ -16,7 +16,7 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Needed for git diffs
+          fetch-depth: 0 # Needed for git diffss
 
       - name: Install Tools
         run: |
