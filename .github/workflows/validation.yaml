@@ -16,12 +16,12 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Needed for git diffss
+          fetch-depth: 0 # Needed for git diff
 
       - name: Install Tools
         run: |
           # Install Kalco
-          curl -sL https://github.com/graz-dev/kalco/releases/latest/download/kalco_Linux_x86_64.tar.gz | tar xz
+          curl -sL https://github.com/graz-dev/kalco/releases/download/v0.1.14/kalco_Linux_x86_64.tar.gz | tar xz
           sudo mv kalco /usr/local/bin/
 
       - name: Configure Kalco Context
