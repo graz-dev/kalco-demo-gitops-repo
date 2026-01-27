@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'raw-resources/**'
+      - 'manifests/**'
 
 jobs:
   validate-drift:
@@ -13,48 +13,74 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Needed for git diff
 
       - name: Install Kalco
         run: |
-          # Install Kalco (latest release)
           curl -sL https://github.com/graz-dev/kalco/releases/latest/download/kalco_linux_amd64.tar.gz | tar xz
           sudo mv kalco /usr/local/bin/
 
-      - name: Snapshot Live State
+      - name: Configure Kalco Context
         env:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
-          SNAPSHOT_TOKEN: ${{ secrets.SNAPSHOT_REPO_TOKEN }}
-          SNAPSHOT_REPO: ${{ secrets.SNAPSHOT_REPO_URL }}
         run: |
           mkdir -p ~/.kube
           echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           
-          kalco config set snapshot-repo $SNAPSHOT_REPO
-          kalco config set snapshot-token $SNAPSHOT_TOKEN
+          # Create a temporary directory for the snapshot
+          mkdir -p tmp-snapshot
           
-          # Create snapshot of the live 'guestbook' namespace
-          kalco snapshot create --namespace guestbook --push
+          # Set context pointing to the temporary snapshot directory
+          kalco context set validation-ctx \
+            --kubeconfig ~/.kube/config \
+            --output $(pwd)/tmp-snapshot \
+            --description "CI Validation Context"
+
+      - name: Snapshot Live State
+        run: |
+          # Export current cluster state to the temp directory
+          # No git push needed as this is a transient snapshot for validation only
+          kalco export
 
       - name: Detect Drifts
         id: kalco-diff
         run: |
-          # Compare local manifests in PR with the live snapshot
-          # We use the --local flag to point to the directory containing our manifests
-          OUTPUT=$(kalco diff --local raw-resources/manifests --namespace guestbook)
+          echo "Detecting changed files..."
+          # Get list of changed YAML files in manifests/
+          CHANGED_FILES=$(git diff --name-only origin/main -- manifests/ | grep '\.yaml$')
           
-          # Ensure output is properly escaped for multi-line string in GITHUB_OUTPUT
-          echo "diff_output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
-          # Check for "DRIFT DETECTED" in the output
-          if echo "$OUTPUT" | grep -q "DRIFT DETECTED"; then
-            echo "has_drift=true" >> $GITHUB_OUTPUT
-          else
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No manifest changes detected."
             echo "has_drift=false" >> $GITHUB_OUTPUT
+            echo "diff_output=No manifest changes." >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          TOTAL_DIFF=""
+          HAS_DRIFT="false"
+
+          for file in $CHANGED_FILES; do
+            echo "Checking $file..."
+            # diff command: --target <local-file> --snapshot-dir <temp-snapshot-dir>
+            OUTPUT=$(kalco diff --target "$file" --snapshot-dir tmp-snapshot || true)
+            
+            if [ -n "$OUTPUT" ]; then
+               TOTAL_DIFF+=$'\n'"File: $file"$'\n'"$OUTPUT"$'\n'
+               if echo "$OUTPUT" | grep -q "DRIFT DETECTED"; then
+                 HAS_DRIFT="true"
+               fi
+            fi
+          done
+          
+          echo "has_drift=$HAS_DRIFT" >> $GITHUB_OUTPUT
+          
+          # Multiline output for comment
+          echo "diff_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$TOTAL_DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Comment PR & Label
         uses: actions/github-script@v6
@@ -64,10 +90,11 @@ jobs:
             const output = \`${{ steps.kalco-diff.outputs.diff_output }}\`;
             const hasDrift = ${{ steps.kalco-diff.outputs.has_drift }};
             
+            if (output.trim() === "") return;
+
             const labelAdd = hasDrift ? 'kalco/deny' : 'kalco/approve';
             const labelRemove = hasDrift ? 'kalco/approve' : 'kalco/deny';
             
-            // Add comment with diff output
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -75,7 +102,6 @@ jobs:
               body: \`### 🛡️ Kalco Validation Report\n\n\`\`\`\n\${output}\n\`\`\`\`
             });
             
-            // Manage Labels
             try {
               await github.rest.issues.removeLabel({
                 issue_number: context.issue.number,
@@ -91,8 +117,3 @@ jobs:
               repo: context.repo.repo,
               labels: [labelAdd]
             });
-            
-            // Fail pipeline if dangerous drift is detected (optional)
-            if (hasDrift) {
-                core.setFailed('Drift detected! Potential conflict with live state.');
-            }

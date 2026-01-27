@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/YOUR_USERNAME/gitops-validation-demo  # Users will update this
+    repoURL: https://github.com/graz-dev/kalco-demo-gitops-repo  
     targetRevision: HEAD
     path: raw-resources/manifests
   destination:
