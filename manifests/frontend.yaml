@@ -7,7 +7,7 @@ metadata:
     app: guestbook
     tier: frontend
 spec:
-  replicas: 3
+  replicas: 5
   selector:
     matchLabels:
         app: guestbook
@@ -26,8 +26,8 @@ spec:
           value: "dns"
         resources:
           requests:
-            cpu: 300m
-            memory: 200Mi
+            cpu: 400m
+            memory: 400Mi
         ports:
         - containerPort: 80
 ---
