@@ -14,5 +14,5 @@ spec:
     namespace: guestbook
   syncPolicy:
     automated: 
-      selfHeal: false  # IMPORTANT: Disabled for validation demo
+      selfHeal: false 
       prune: true
